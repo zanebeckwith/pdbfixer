@@ -8,3 +8,4 @@ dependencies:
   - openmm
   - numpy
   - pip
+  - pykdtree
