@@ -39,6 +39,7 @@ from openmm.app.internal.pdbstructure import PdbStructure
 from openmm.app.internal.pdbx.reader.PdbxReader import PdbxReader
 from openmm.app.element import hydrogen, oxygen
 from openmm.app.forcefield import NonbondedGenerator
+from pykdtree.kdtree import KDTree
 
 # Support Cythonized functions in OpenMM 7.3
 # and also implementations in older versions.
@@ -1209,19 +1210,13 @@ class PDBFixer(object):
         """Given a set of newly added atoms, find the closest distance between one of those atoms and another atom."""
 
         positions = context.getState(getPositions=True).getPositions(asNumpy=True).value_in_unit(unit.nanometer)
-        boxSize = np.max(positions, axis=0)-np.min(positions, axis=0)
-        boxVectors = [(boxSize[0], 0, 0), (0, boxSize[1], 0), (0, 0, boxSize[2])]
-        cells = app.modeller._CellList(positions, cutoff, boxVectors, False)
-        nearest_squared = sys.float_info.max
-        for atom in newAtoms:
-            excluded = exclusions[atom]
-            for i in cells.neighbors(positions[atom.index]):
-                if i not in excluded:
-                    p = positions[atom.index]-positions[i]
-                    dist_squared = np.dot(p, p)
-                    if dist_squared < nearest_squared:
-                        nearest_squared = dist_squared
-        return np.sqrt(nearest_squared)
+
+        newPositions = positions[[atom.index for atom in newAtoms]]
+        # For each `newPosition`, get the distance from it to its two nearest-neighbors
+        # (nearest-neighbor will be self, and thus dist=0.0, so need next-nearest, too).
+        dists = KDTree(newPositions).query(positions, k=2)[0]
+        dists = dists[dists != 0.0]  # remove self distances
+        return np.min(dists)
 
 
 def main():
